@@ -1,0 +1,18 @@
+EE323 Computer Network Assignment 2
+20160609 정진하
+
+1. Because of stack overflow, before executing my code, please type the following command in linux terminal:
+"ulimit -s unlimited"
+
+2. When checking with FireFox, I noticed that in addition to changing proxy behaviors as taught in class, my browser should also turn off "gzip encoding" in FireFox to make it work properly.
+
+3. It seems that for some reason the page of warning.or.kr won't be displayed when testing blacklist functionalities with FireFox.
+But when I print out the messages sent between client-proxy-server, they display proper messages.
+To enable this (and check), there are four fprintf(stdout, "step #: %s", ...) lines each being step 1, step 2, step 3, and step 4. These lines need to be un-commented.
+
+4. Also, I have included a header file proxy.h.
+
+5. The function error_message() was made for debugging purposes. It may seem like it prints messages, but in the function implementation, it does nothing. It simply enters and exits.
+
+I'd also like to use two tokens for this assignment.
+Thank you.

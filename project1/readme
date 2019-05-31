@@ -1,0 +1,28 @@
+20160609 Jinha Chung, School of Electrical Engineering
+EE323 Assignment #1
+
+
+1. A description of whatever help (if any) you received from others wile doing the assignment, and the names of any individuals with whom you collaborated, as prescribed by the course Policy web page.
+	-> I did not collaborate with any students discussing the code, but did talk to 정구일 a lot about the assignments and the appropriate I/O functions and several corner cases we had to think of.
+
+2. (Optional) An indication of how much time you spent doing the assignment.
+	-> I spent about 3 hours reading Beej's guide to help me get started. Parsing lines took less than an hour because it was straightforward. Around 6 hours in total helped me form the first draft, except it could not deal with binary files. Then after that dealing with binary files took around another 10 hours, and I got the help of TA from Piazza and fixed it in about an hour, using fgetc() and fputc(). I'd say about 20 hours in total.
+
+3. (Optional) Your assessment of the assignment: Did it help you to learn? What did it help you to learn? Do you have any suggestions for improvement? Etc.
+	-> It did help me learn. However, I do think that having to send binary files was a bit of a stretch in that other regular I/O functions could read or write them regularly. But ultimately, this part did help me learn that regular file reading and binary file reading are different. (I am unsatisfied about this part because this is a Computer Network course, not C programming or file processing course.)
+
+4. (Optional) Any information that will help us to grade your work in the most favorable light. In particular, you should describe all known bugs.
+	-> 
+	Not too many bugs are found.
+	1. I initially limited the MAXDATASIZE to 4096 bytes, but it had some problems with binary files that contained over that many number of characters in one line. Now it is set to 2^16 (65536), just because it seems 'big enough'.
+	2. In the client, when getopt() returns '?', I let it raise its own error. In a default case, it returns "command line argument only takes -p and -h.\n". When it does not receive either the -p option or the -h option, it prints "Please specify both option p and option h.\n" and "Exiting client program now...\n"
+	Several errors were raised to stderr, and in case of socket(), connect(), send(), or  recv() failures, perror() raises an error.
+	3. In the client, if the server closes the socket, "client: server closed connection. Ending program...\n" is printed in stdout.
+	4. The server raises error in a client-like manner.
+	5. The server and the client communicate by client send()ing to server, server reading the message, printing the message in its stdout, and replying to client via send(). Until the client recv()s from the server, it will not proceed. The message client sends to the server is what it read from its stdin, and the message the server sends to the client is "server's reply".
+	6. A lot of the part "2." in both server.c and client.c are from Beej's guide. I believe this should be OK, given that after seeing such a 'standard' code, it is hard to be more creative and invent some other way to do it.
+	7. When raising errors for things like bind(), sometimes errors are raised twice. But this does not seem to be a problem because the programmer will be notified of the error anyways and the program will exit like it should.
+	8. When given some inputs files, my server outputs a slight different result from the solution server's in that the soltion has an additional "^@" at the end, when opened with vim. When asked on Piazza, TA approved of this behavior.
+	Link: https://piazza.com/class/jsjn3rdlgrn58h?cid=16
+	Asked on 3.18, with title "a (possible) null character at solution output file"
+
