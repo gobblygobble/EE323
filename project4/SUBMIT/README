@@ -1,0 +1,52 @@
+2019S KAIST
+EE323 Computer Network
+Assignment #4: STCP (Simple TCP)
+
+20160609 Jinha Chung (KAIST EE)
+------------------------------------------------------------------------------------------------------------------------
+Design:
+    1.
+    I introduced several new functions, CreatePacket(), SendPacket(), WaitPacket(), and PrintPacket().
+
+        1-1 CreatePacket()
+        Creates the specified type of packet with given sequence/acknowledgement numbers, and returns it.
+        Called in SendPacket().
+
+        1-2 SendPacket()
+        Wraps the functions CreatePacket() and stcp_network_send().
+        Given the context and the type of packet to send, it calls CreatePacket() to generate the corresponding packet with appropriate fields set.
+        Then it calls stcp_network_send() to delived the packet.
+
+        1-3 WaitPacket()
+        Basically waits for the given type of packet.
+        Wraps the function stcp_network_recv().
+        Usually used in cases where a host has sent a data packet, and need to wait for an ACK.
+        Or in 3-way handshake and 4-way handshakes, where if a host sent a SYN packet, it needs to wait for a SYN-ACK packet.
+        A usage in 4-way handshake would be waiting for an ACK packet after a host sends a FIN packet.
+
+        1-4 PrintPacket()
+        Prints packet informations.
+        Note that if the packet is being sent, then it has not passed the network layer and thus the calloc()-ed port numbers and checksum are 0.
+        When __DEBUG__ is not #defined (a submitted transport.c will have this un-#defined) it immediately returns, so nothing is printed.
+
+    2. 
+    In case of errors, if the error is a system (OS, or network function) related one, like cases when stcp_network_send() returned a non-positive number,
+    perror() function was used to print errors in stderr.
+    In other cases of errors, fprintf(stderr, ...) was used. But in the cases I've seen, these errors are not posted.
+    (Mainly because they shouldn't, and are printed for debugging purposes)
+
+    3.
+    Other parts of the code are easy to read, given that the four functions introduced are well-understood and you follow the rules of switch-case statements.
+ 
+------------------------------------------------------------------------------------------------------------------------
+Tradeoffs:
+    As simple as the design gets, especially taking the below assumptions into account, the transport layer would suffer badly from any unreliable network layer.
+    In other words, if given the '-u' option, the transport layer would simply not work because currently it is built on top of a reliable network layer.
+
+    Because an initial ctx->connection_state was set, I've added more states and changed states accordingly when needed.
+    However, this state-keeping is mostly useless in that the network layer is reliable and usually actions are based upon the received/sent packets,
+    and have not much to do with the state itself.
+------------------------------------------------------------------------------------------------------------------------
+Assumptions:
+    As mentioned in the assignment pdf, I assumed that the network layer would function in a reliable mode.
+    Thus, out-of-order packets, packet loss, and packet corruption were not handled.
