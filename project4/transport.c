@@ -134,16 +134,20 @@ void transport_init(mysocket_t sd, bool_t is_active)
             free(ctx);
             return;
         }
-        ctx->connection_state = CSTATE_SYN_RCVD;
         if (!SendPacket(sd, ctx, SYNACK, NULL, 0)) {
             perror("3-way handshake send SYNACK");
+            free(ctx);
+            return;
+        }
+        ctx->connection_state = CSTATE_SYN_RCVD;
+        if (!WaitPacket(sd, ctx, ACK)) {
+            perror("3-way handshake wait ACK");
             free(ctx);
             return;
         }
         ctx->connection_state = CSTATE_ESTABLISHED;
     }
 
-    //ctx->connection_state = CSTATE_ESTABLISHED;
     stcp_unblock_application(sd);
 
     control_loop(sd, ctx);
@@ -177,17 +181,21 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     size_t max_length = 0;
     ssize_t data_length = 0;
 
+    fprintf(stdout, "control_loop() called.\n");
+
     while (!ctx->done)
     {
 
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
-        event = stcp_wait_for_event(sd, 0, NULL);
+        event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
+
+        fprintf(stdout, "WOOT! Got an event: %d\n", event);
 
         max_length = (ctx->rcvd_win > STCP_MSS) ? STCP_MSS : ctx->rcvd_win;
-        max_length -= sizeof(STCPHeader);
+        //max_length -= sizeof(STCPHeader);
         
-        buffer = (char *)calloc(1, sizeof(STCP_MSS));
+        buffer = (char *)calloc(1, STCP_MSS);
         STCPHeader *packet = (STCPHeader *)buffer;
 
         /* check whether it was the network, app, or a close request */
@@ -220,7 +228,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         else if (event & NETWORK_DATA) {
             /* incoming data from the peer */
             data_length = stcp_network_recv(sd, buffer, max_length);
-            
             if (data_length < (ssize_t)sizeof(STCPHeader)) {
                 // something wrong
                 fprintf(stderr, "control_loop(): Supposed to get NETWORK_DATA but received something too small.\n");
@@ -229,8 +236,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 return;
             }
             
+            PrintPacket((STCPHeader *)buffer, 0);
+            fprintf(stdout, "Received data length: %lu.\n", data_length);
+            
             /* check for all possible closing cases */
-            if ((ctx->connection_state == CSTATE_ESTABLISED) && (packet->th_flags | TH_FIN)) {
+            if ((ctx->connection_state == CSTATE_ESTABLISHED) && (packet->th_flags & TH_FIN)) {
                 // was open -> asked to close: 4-way handshake
                 // TODO: maybe change ACK to FINACK?
                 if (!SendPacket(sd, ctx, ACK, NULL, 0)) {
@@ -264,7 +274,16 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             else {
                 // regular data
                 // TODO: do something with data
-                stcp_app_send(sd, ((char *)buffer + sizeof(STCPHeader)), ((size_t)data_length - sizeof(STCPHeader)))
+                fprintf(stdout, "2\n");
+                stcp_app_send(sd, ((char *)buffer + sizeof(STCPHeader)), ((size_t)data_length - sizeof(STCPHeader)));
+
+                // set ctx fields for next ACK
+                STCPHeader *datapacket = (STCPHeader *)buffer;
+                ctx->rcvd_seq = ntohl(datapacket->th_seq);
+                ctx->rcvd_ack = ntohl(datapacket->th_ack);
+                ctx->rcvd_len = (size_t)data_length - sizeof(STCPHeader);
+                ctx->rcvd_win = ntohl(datapacket->th_win);
+
                 //fprintf(stdout, "Do something with data packet.\n");
                 // send ACK
                 if (!SendPacket(sd, ctx, ACK, NULL, 0)) {
@@ -285,7 +304,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 return;
             }
             // nothing wrong
-            stcp_fin_received(sd);
+            //stcp_fin_received(sd);
             if (!SendPacket(sd, ctx, FIN, NULL, 0)) {
                 perror("control_loop(): 4-way handshake send FIN 1");
                 free(buffer);
@@ -294,14 +313,14 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             }
             ctx->connection_state = CSTATE_FIN_WAIT1;
             // TODO: maybe change ACK to FINACK?
-            if (!WaitPacket(sd, ctx, ACK, NULL, 0)) {
+            if (!WaitPacket(sd, ctx, ACK)) {
                 perror("control_loop(): 4-way handshake wait FINACK 1");
                 free(buffer);
                 free(ctx);
                 return;
             }
             ctx->connection_state = CSTATE_FIN_WAIT2;
-            if (!WaitPacket(sd, ctx, FIN, NULL, 0)) {
+            if (!WaitPacket(sd, ctx, FIN)) {
                 perror("control_loop(): 4-way handshake wait FIN 2");
                 free(buffer);
                 free(ctx);
@@ -333,7 +352,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     }
     /* clean up my mess! */
     free(buffer);
-    free(ctx);
     return;
 }
 
@@ -369,6 +387,8 @@ void our_dprintf(const char *format,...)
  *
  * Creates a MEMORY-ALLOCATED packet of the specified type and returns it.
  * Called in SendPacket()
+ * TODO:
+ * change th_win
  */
 STCPHeader*
 CreatePacket(tcp_seq seqnum, tcp_seq acknum, PacketType type, char* payload, size_t length)
@@ -483,10 +503,10 @@ SendPacket(mysocket_t sd, context_t* ctx, PacketType type, char* src, size_t src
             break;
     }
     packet = CreatePacket(seqnum, acknum, type, src, src_len);
-    numBytes = stcp_network_send(sd, packet, sizeof(STCPHeader) + src_len, NULL);
+    numBytes = stcp_network_send(sd, (void *)packet, sizeof(STCPHeader) + src_len, NULL);
     PrintPacket(packet, true);
     
-    free(packet);
+    //free(packet);
     
     if (numBytes > 0) {
         return true;
@@ -511,23 +531,27 @@ bool
 WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
 {
     STCPHeader *packet = (STCPHeader *)calloc(1, sizeof(STCPHeader) + STCP_MSS);
-    //unsigned int event;
+    unsigned int event;
     ssize_t numBytes;
 
     event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
     //stcp_wait_for_event(sd, NETWORK_DATA, NULL);
 
     if (!(event & NETWORK_DATA)) {
-        fprintf(stderr, "WaitPacket(): Expected NETWORK_DATA, got something else.\n");
+        fprintf(stderr, "WaitPacket(): Expected NETWORK_DATA(2), got %d instead.\n", event);
     }
 
-    numBytes = stcp_network_recv(sd, (void *)packet, STCP_MSS);
+    numBytes = stcp_network_recv(sd, (void *)packet, sizeof(STCPHeader) + STCP_MSS);
+
+    fprintf(stdout, "1\n");
 
     if (numBytes < (ssize_t)sizeof(STCPHeader)) {
         // something went wrong
         free(packet);
         return false;
     }
+
+    
 
     PrintPacket(packet, false);
 
@@ -583,13 +607,29 @@ WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
                 return false;
             }
             break;
+        case FIN:
+            if ((packet->th_flags & TH_FIN) == (TH_FIN)) {
+                ctx->rcvd_seq = ntohl(packet->th_seq);
+                ctx->rcvd_ack = ntohl(packet->th_ack);
+                ctx->rcvd_win = ntohs(packet->th_win);
+                ctx->rcvd_len = (size_t)numBytes - sizeof(STCPHeader);
+
+                ctx->rcvd_len = (ctx->rcvd_len == 0) ? 1 : ctx->rcvd_len;
+                ctx->next_seq = ctx->rcvd_ack;
+            }
+            else {
+                fprintf(stderr, "WaitPacket(): Waiting for FIN... Unexpected packet type.\n");
+                free(packet);
+                return false;
+            }
+            break;
         default:
             fprintf(stderr, "WaitPacket(): Packet with unspecified behavior.\n");
             free(packet);
             return false;
             break;
     }
-    free(packet);
+    //free(packet);
     return true;
 }
 
@@ -618,4 +658,20 @@ void PrintPacket(STCPHeader *packet, bool isSend)
     if (packet->th_flags & TH_ACK) fprintf(stdout, "ACK ");
     fprintf(stdout, "\n");
     fprintf(stdout, "-------------------------------------------------\n"); 
+}
+
+/**********************************************************************/
+/* CheckPacket
+ *
+ * Checks if the given packet should be ignored or processed.
+ * 
+ * Returns true if it should be processed and
+ * false if it should be ignored.
+ */
+bool CheckPacket(context_t *ctx, void* buffer)
+{
+    STCPHeader *header = (STCPHeader *)buffer;
+    if (header->th_flags | TH_ACK) {
+        fprintf(stdout, "\n");
+    }
 }
