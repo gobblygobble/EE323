@@ -23,6 +23,9 @@
 #include <arpa/inet.h>
 #include <stdbool.h>
 
+/* my macros */
+#define WINDOW_SIZE 3072
+
 enum {
     CSTATE_ESTABLISHED,
     CSTATE_LISTEN,
@@ -69,7 +72,12 @@ typedef struct
     tcp_seq rcvd_win;
     // to be sent
     tcp_seq next_seq;
-
+    // windows
+    uint32_t cwnd;
+    uint32_t swnd;
+    uint32_t remainder_window;
+    // log file pointer
+    FILE *logfile;
 } context_t;
 
 
@@ -104,7 +112,11 @@ void transport_init(mysocket_t sd, bool_t is_active)
      * if connection fails; to do so, just set errno appropriately (e.g. to
      * ECONNREFUSED, etc.) before calling the function.
      */
-    
+
+    /* initialize cwnd, swnd, remainder_window and connection_state*/
+    ctx->cwnd = STCP_MSS;
+    ctx->swnd = STCP_MSS;
+    ctx->remainder_window = STCP_MSS;
     ctx->connection_state = CSTATE_LISTEN;
 
     if (is_active) {
@@ -126,6 +138,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
             free(ctx);
             return;
         }
+        ctx->logfile = fopen("client_log.txt", "w");
     }
 	else {
         // wait for SYN packet to arrive
@@ -146,13 +159,15 @@ void transport_init(mysocket_t sd, bool_t is_active)
             return;
         }
         ctx->connection_state = CSTATE_ESTABLISHED;
+        ctx->logfile = fopen("server_log.txt", "w");
     }
 
     stcp_unblock_application(sd);
 
     control_loop(sd, ctx);
-
+    
     /* do any cleanup here */
+    fclose(ctx->logfile);
     free(ctx);
 }
 
@@ -190,12 +205,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
 
-        fprintf(stdout, "WOOT! Got an event: %d\n", event);
-
-        max_length = (ctx->rcvd_win > STCP_MSS) ? STCP_MSS : ctx->rcvd_win;
+        max_length = (ctx->remainder_window > STCP_MSS) ? STCP_MSS : ctx->remainder_window;
         //max_length -= sizeof(STCPHeader);
         
-        buffer = (char *)calloc(1, STCP_MSS);
+        buffer = (char *)calloc(1, STCP_MSS + sizeof(STCPHeader));
         STCPHeader *packet = (STCPHeader *)buffer;
 
         /* check whether it was the network, app, or a close request */
@@ -227,7 +240,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         
         else if (event & NETWORK_DATA) {
             /* incoming data from the peer */
-            data_length = stcp_network_recv(sd, buffer, max_length);
+            fprintf(stdout, "Now I can receive up to %lu bytes.\n", max_length);
+            data_length = stcp_network_recv(sd, (void *)buffer, max_length + sizeof(STCPHeader));
+
             if (data_length < (ssize_t)sizeof(STCPHeader)) {
                 // something wrong
                 fprintf(stderr, "control_loop(): Supposed to get NETWORK_DATA but received something too small.\n");
@@ -387,8 +402,6 @@ void our_dprintf(const char *format,...)
  *
  * Creates a MEMORY-ALLOCATED packet of the specified type and returns it.
  * Called in SendPacket()
- * TODO:
- * change th_win
  */
 STCPHeader*
 CreatePacket(tcp_seq seqnum, tcp_seq acknum, PacketType type, char* payload, size_t length)
@@ -397,7 +410,7 @@ CreatePacket(tcp_seq seqnum, tcp_seq acknum, PacketType type, char* payload, siz
     header->th_seq = htonl(seqnum);
     header->th_ack = htonl(acknum);
     header->th_off = 5;  // no options whatsoever
-    header->th_win = htons(STCP_MSS); // not sure
+    header->th_win = htons(WINDOW_SIZE);
     switch (type)
     {
         case SYN:
@@ -444,10 +457,7 @@ SendPacket(mysocket_t sd, context_t* ctx, PacketType type, char* src, size_t src
     // variables
     STCPHeader *packet;
     tcp_seq seqnum, acknum;
-    //char* src = NULL;
-    //size_t src_len = 0;
     ssize_t numBytes;
-    //int new_state;
 
     switch (type)
     {
@@ -491,11 +501,18 @@ SendPacket(mysocket_t sd, context_t* ctx, PacketType type, char* src, size_t src
         case DATA:
             assert(src);
             assert(src_len);
+            // print log
+            if (ctx->connection_state == CSTATE_ESTABLISHED) {
+                fprintf(ctx->logfile, "Send:\t%u\t%u\t%lu\n", ctx->swnd, ctx->remainder_window, src_len);
+            }
             seqnum = ctx->next_seq;
             acknum = ctx->prev_ack;
             ctx->prev_seq = seqnum;
             ctx->prev_ack = acknum;
             ctx->prev_len = src_len;
+
+            ctx->remainder_window -= src_len;
+            fprintf(stdout, "Sending %lu bytes of data (not including header).\n", src_len);
             break;
         default:
             fprintf(stderr, "SendPacket(): Unknown packet type.\n");
@@ -506,7 +523,7 @@ SendPacket(mysocket_t sd, context_t* ctx, PacketType type, char* src, size_t src
     numBytes = stcp_network_send(sd, (void *)packet, sizeof(STCPHeader) + src_len, NULL);
     PrintPacket(packet, true);
     
-    //free(packet);
+    free(packet);
     
     if (numBytes > 0) {
         return true;
@@ -535,7 +552,6 @@ WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
     ssize_t numBytes;
 
     event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
-    //stcp_wait_for_event(sd, NETWORK_DATA, NULL);
 
     if (!(event & NETWORK_DATA)) {
         fprintf(stderr, "WaitPacket(): Expected NETWORK_DATA(2), got %d instead.\n", event);
@@ -543,17 +559,11 @@ WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
 
     numBytes = stcp_network_recv(sd, (void *)packet, sizeof(STCPHeader) + STCP_MSS);
 
-    fprintf(stdout, "1\n");
-
     if (numBytes < (ssize_t)sizeof(STCPHeader)) {
         // something went wrong
         free(packet);
         return false;
     }
-
-    
-
-    PrintPacket(packet, false);
 
     switch (type)
     {
@@ -576,6 +586,12 @@ WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
             break;
         case ACK:
             if ((packet->th_flags & TH_ACK) == TH_ACK) {
+                
+                // print log
+                if (ctx->connection_state == CSTATE_ESTABLISHED) {
+                    fprintf(ctx->logfile, "Recv:\t%u\t%u\t%lu\n", ctx->swnd, ctx->remainder_window, ctx->prev_len);
+                }
+                
                 ctx->rcvd_seq = ntohl(packet->th_seq);
                 ctx->rcvd_ack = ntohl(packet->th_ack);
                 ctx->rcvd_win = ntohs(packet->th_win);
@@ -584,6 +600,16 @@ WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
                 ctx->rcvd_len = (ctx->rcvd_len == 0) ? 1 : ctx->rcvd_len;
 
                 ctx->next_seq = ctx->rcvd_ack;
+                
+                uint32_t prev_swnd = ctx->swnd;
+                if (ctx->prev_len != 1) {
+                    if (ctx->cwnd < (4 * STCP_MSS)) ctx->cwnd += STCP_MSS;
+                    else                            ctx->cwnd += (STCP_MSS * STCP_MSS / ctx->cwnd);
+                }
+                // set swnd to min(cwnd, rwnd == WINDOW_SIZE)
+                ctx->swnd = (ctx->cwnd < WINDOW_SIZE) ? ctx->cwnd : WINDOW_SIZE;
+                if (ctx->prev_len != 1) ctx->remainder_window += ctx->prev_len;
+                ctx->remainder_window += (ctx->swnd - prev_swnd);
             }
             else {
                 fprintf(stderr, "WaitPacket(): Waiting for ACK... Unexpected packet type.\n");
@@ -674,4 +700,6 @@ bool CheckPacket(context_t *ctx, void* buffer)
     if (header->th_flags | TH_ACK) {
         fprintf(stdout, "\n");
     }
+
+    return true;
 }
