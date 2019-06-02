@@ -1,7 +1,7 @@
 %.o	Makefile	/^%.o: %.cpp$/
 %.o	Makefile	/^%.o: %.c$/
 .PHONY	Makefile	/^.PHONY: clean all rebuild$/
-ACK	transport.c	40
+ACK	transport.c	43
 ANY_EVENT	stcp_api.h	20
 APP_CLOSE_REQUESTED	stcp_api.h	19
 APP_DATA	stcp_api.h	17
@@ -13,20 +13,21 @@ ASSERT_VALID_MYSOCKET_DESCRIPTOR	mysock.c	/^    #define ASSERT_VALID_MYSOCKET_DE
 BINARIES	Makefile	/^BINARIES = client server stcp_echo_client stcp_ech/
 CC	Makefile	/^CC=gcc$/
 CFLAGS	Makefile	/^CFLAGS=-g -D$(ENV) -D_REENTRANT $(ENVCFLAGS) -Wall/
-CSTATE_CLOSED	transport.c	35
-CSTATE_CLOSE_WAIT	transport.c	33
-CSTATE_CLOSING	transport.c	31
-CSTATE_ESTABLISHED	transport.c	24
-CSTATE_FIN_WAIT1	transport.c	29
-CSTATE_FIN_WAIT2	transport.c	30
-CSTATE_LAST_ACK	transport.c	34
-CSTATE_LISTEN	transport.c	25
-CSTATE_SYN_RCVD	transport.c	27
-CSTATE_SYN_SENT	transport.c	26
+CSTATE_CLOSED	transport.c	38
+CSTATE_CLOSE_WAIT	transport.c	36
+CSTATE_CLOSING	transport.c	34
+CSTATE_ESTABLISHED	transport.c	27
+CSTATE_FIN_WAIT1	transport.c	32
+CSTATE_FIN_WAIT2	transport.c	33
+CSTATE_LAST_ACK	transport.c	37
+CSTATE_LISTEN	transport.c	28
+CSTATE_SYN_RCVD	transport.c	30
+CSTATE_SYN_SENT	transport.c	29
 CreatePacket	transport.c	/^CreatePacket(tcp_seq seqnum, tcp_seq acknum, Packe/
-DATA	transport.c	42
+D	network_io_socket.o	12
+DATA	transport.c	45
 DEBUG_CONNECTION_MSG	connection_demux.c	/^#define DEBUG_CONNECTION_MSG(msg, reason) \\$/
-DEBUG_CONNECTION_MSG	connection_demux.c	257
+DEBUG_CONNECTION_MSG	connection_demux.c	256
 DEBUG_LOG	mysock_impl.h	/^    #define DEBUG_LOG(args) { printf args; fflush(/
 DEBUG_LOG	mysock_impl.h	/^    #define DEBUG_LOG(args)$/
 DEBUG_PEER	network_io_socket.h	/^#define DEBUG_PEER(ctx) \\$/
@@ -34,12 +35,14 @@ DEBUG_PEER	network_io_socket.h	/^#define DEBUG_PEER(ctx)$/
 DEPEND_SRCS	Makefile	/^DEPEND_SRCS = $(SRCS) $(APP_SRCS)$/
 ECHO_CLIENT_OBJS	Makefile	/^ECHO_CLIENT_OBJS=echo_client_main.o $(OBJS_VNS)$/
 ECHO_SERVER_OBJS	Makefile	/^ECHO_SERVER_OBJS=echo_server_main.o $(OBJS_VNS)$/
+ELF	mysock.o	1
 EXIT_PIPE_READ_INDEX	network_io_socket.c	29
 EXIT_PIPE_WRITE_INDEX	network_io_socket.c	30
 FALSE	mysock.h	19
-FIN	transport.c	43
-FINACK	transport.c	44
+FIN	transport.c	46
+FINACK	transport.c	47
 GET_SOCKET	network_io_socket.h	/^#define GET_SOCKET(ctx) ((network_context_socket_t/
+H	stcp_api.o	2
 HASH_DEFAULT_HASH_FN	mysock_hash.h	/^#define HASH_DEFAULT_HASH_FN(key,size)  ((key) % (/
 HASH_DEFAULT_KEY_EQUALS	mysock_hash.h	/^#define HASH_DEFAULT_KEY_EQUALS(a,b)    ((a) == (b/
 HASH_DELETE	mysock_hash.h	/^#define HASH_DELETE(tbl,key)            _hash_dele/
@@ -55,6 +58,7 @@ INLINE	mysock_impl.h	21
 INVALIDATE_CONNECT_REQUEST	connection_demux.c	/^#define INVALIDATE_CONNECT_REQUEST(r) \\$/
 LIBS	Makefile	/^LIBS=$(ENVLIBS)$/
 LN	Makefile	/^LN=ln$/
+M	client	192
 MAKEFILE	Makefile	/^MAKEFILE=Makefile$/
 MAX	transport.h	/^    #define MAX(x,y)  ((x) >= (y) ? (x) : (y))$/
 MAXHOSTNAMELEN	network_io_socket.c	34
@@ -71,13 +75,16 @@ MYSOCK_ERROR_EXIT	mysock_api.c	/^#define MYSOCK_ERROR_EXIT(rc) { errno = rc; ret
 Mclient	client.c	/^main(int argc, char *argv[])$/
 Mserver	server.c	/^main(int argc, char *argv[])$/
 NETWORK_DATA	stcp_api.h	18
+O	mysock.o	10
 OBJS	Makefile	/^OBJS = $(OBJS_MYSOCK) $(OBJS_IO)$/
 OBJS_IO	Makefile	/^OBJS_IO = $(SRCS_IO:.c=.o)$/
 OBJS_MYSOCK	Makefile	/^OBJS_MYSOCK = $(SRCS_MYSOCK:.c=.o)$/
 OSTYPE	ENVCFG.MK	6
 OSTYPE	ENVCFG.MK~	6
 PTHREAD_CALL	mysock_impl.h	/^#define PTHREAD_CALL(rc) _pthread_call(rc)$/
-PacketType	transport.c	38
+PacketType	transport.c	41
+PacketType	transport.c	49
+PrintPacket	transport.c	/^void PrintPacket(STCPHeader *packet, bool isSend)$/
 RCVD_FILENAME	client.c	33
 RM	Makefile	/^RM=rm$/
 SRCS	Makefile	/^SRCS = $(SRCS_MYSOCK) $(SRCS_IO)$/
@@ -87,8 +94,8 @@ SR_EXE	Makefile	/^SR_EXE = sr$/
 SR_SRC	Makefile	/^SR_SRC = sr_src$/
 STCPHeader	transport.h	67
 STCP_MSS	transport.h	77
-SYN	transport.c	39
-SYNACK	transport.c	41
+SYN	transport.c	42
+SYNACK	transport.c	44
 SendPacket	transport.c	/^SendPacket(mysocket_t sd, context_t* ctx, PacketTy/
 TCP_DATA_START	transport.h	/^#define TCP_DATA_START(p) (((STCPHeader *) p)->th_/
 TCP_OPTIONS_LEN	transport.h	/^#define TCP_OPTIONS_LEN(p) (TCP_DATA_START(p) - si/
@@ -182,8 +189,8 @@ connection_cond	connection_demux.c	51
 connection_demux.o	Makefile	/^connection_demux.o: connection_demux.c mysock_impl/
 connection_lock	connection_demux.c	52
 connection_queue	connection_demux.c	49
-connection_state	transport.c	52
-context_t	transport.c	69
+connection_state	transport.c	56
+context_t	transport.c	73
 control_loop	transport.c	/^static void control_loop(mysocket_t sd, context_t /
 copied	network_io.h	39
 copy_buf_len	network_io.h	41
@@ -199,7 +206,7 @@ dependinit	Makefile	/^dependinit:$/
 dist	Makefile	/^dist: dist-clean$/
 dist-clean	Makefile	/^dist-clean: clean$/
 do_connection	server.c	/^static void do_connection(mysocket_t sd)$/
-done	transport.c	50
+done	transport.c	54
 dperror	transport.h	/^    #define dperror(head) \\$/
 dperror	transport.h	/^        #define dperror(head)$/
 dperror	transport.h	115
@@ -210,6 +217,7 @@ dst_addr	tcp_sum.c	22
 echo_client_main.o	Makefile	/^echo_client_main.o: echo_client_main.c mysock.h$/
 echo_server_main.o	Makefile	/^echo_server_main.o: echo_server_main.c mysock.h$/
 eof	mysock_impl.h	105
+error	network_io_socket.o	6
 exit_pipe	network_io_socket.h	28
 filename	client.c	40
 force	Makefile	/^force:$/
@@ -219,7 +227,7 @@ get_nvt_line	server.c	/^get_nvt_line(int sd, char *line)$/
 global_ctx	mysock.c	35
 head	mysock_impl.h	61
 impl_data	network_io.h	35
-initial_sequence_num	transport.c	53
+initial_sequence_num	transport.c	57
 io_func_t	network_io_tcp.c	18
 is_active	mysock_impl.h	73
 is_reliable	network_io.h	23
@@ -232,6 +240,10 @@ local_addr	network_io.h	27
 local_name	server.c	/^static int local_name(mysocket_t sd, char *name)$/
 local_port	connection_demux.c	41
 loop_until_end	client.c	/^loop_until_end(int sd)$/
+m	client	415
+m	connection_demux.o	10
+m	network_io.o	9
+m	server	406
 max_len	connection_demux.c	42
 my_sd	mysock_impl.h	84
 myaccept	mysock_api.c	/^mysocket_t myaccept(mysocket_t sd, struct sockaddr/
@@ -250,6 +262,7 @@ mysock_context_t	mysock_impl.h	115
 mysocket	mysock_api.c	/^mysocket_t mysocket(bool_t is_reliable)$/
 mysocket_t	mysock.h	27
 mywrite	mysock_api.c	/^int mywrite(mysocket_t sd, const void *buf, size_t/
+n	tcp_sum.o	25
 network.o	Makefile	/^network.o: network.c mysock_impl.h mysock.h networ/
 network_context_socket_t	network_io_socket.h	29
 network_context_socket_tcp_t	network_io_socket.h	42
@@ -264,8 +277,9 @@ network_state	mysock_impl.h	79
 new_socket	network_io_socket.h	39
 next	connection_demux.c	35
 next	mysock_impl.h	56
-next_seq	transport.c	67
+next_seq	transport.c	71
 our_dprintf	transport.c	/^void our_dprintf(const char *format,...)$/
+p	tcp_sum.o	44
 packet_queue_node	mysock_impl.h	52
 packet_queue_node_t	mysock_impl.h	57
 packet_queue_t	mysock_impl.h	63
@@ -275,17 +289,17 @@ peer_addr	network_io.h	30
 peer_addr_len	connection_demux.c	22
 peer_addr_len	network_io.h	31
 peer_addr_valid	network_io.h	32
-prev_ack	transport.c	59
-prev_len	transport.c	60
-prev_seq	transport.c	58
+prev_ack	transport.c	63
+prev_len	transport.c	64
+prev_seq	transport.c	62
 process_line	server.c	/^process_line(int sd, char *line)$/
 protocol	tcp_sum.c	24
 quiet_opt	client.c	41
 random_seed	network_io.h	38
-rcvd_ack	transport.c	63
-rcvd_len	transport.c	64
-rcvd_seq	transport.c	62
-rcvd_win	transport.c	65
+rcvd_ack	transport.c	67
+rcvd_len	transport.c	68
+rcvd_seq	transport.c	66
+rcvd_win	transport.c	69
 rebuild	Makefile	/^rebuild: clean all$/
 recv_thread	network_io_socket.h	24
 recv_thread_started	network_io_socket.h	25
@@ -341,4 +355,6 @@ usage	client.c	39
 usage	server.c	29
 user_data	connection_demux.c	28
 verify_mysocket_descriptor	mysock.c	/^static void verify_mysocket_descriptor(mysock_cont/
+w	network_io_tcp.o	41
+x	client.o	33
 zero	tcp_sum.c	23

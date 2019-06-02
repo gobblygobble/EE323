@@ -172,23 +172,169 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 {
     assert(ctx);
 
+    unsigned int event;
+    char *buffer;
+    size_t max_length = 0;
+    ssize_t data_length = 0;
+
     while (!ctx->done)
     {
-        unsigned int event;
 
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, 0, NULL);
 
+        max_length = (ctx->rcvd_win > STCP_MSS) ? STCP_MSS : ctx->rcvd_win;
+        max_length -= sizeof(STCPHeader);
+        
+        buffer = (char *)calloc(1, sizeof(STCP_MSS));
+        STCPHeader *packet = (STCPHeader *)buffer;
+
         /* check whether it was the network, app, or a close request */
-        if (event & APP_DATA)
-        {
+        if (event & APP_DATA) {
             /* the application has requested that data be sent */
             /* see stcp_app_recv() */
+            data_length = stcp_app_recv(sd, buffer, max_length);
+
+            if (data_length == 0) {
+                // something wrong
+                fprintf(stderr, "control_loop(): Supposed to get APP_DATA but received nothing.\n");
+                free(buffer);
+                free(ctx);
+                return;
+            }
+            if (!SendPacket(sd, ctx, DATA, buffer, data_length)) {
+                perror("control_loop(): Sending DATA");
+                free(buffer);
+                free(ctx);
+                return;
+            }
+            if (!WaitPacket(sd, ctx, ACK)) {
+                perror("control_loop(): Waiting for ACK of sent DATA");
+                free(buffer);
+                free(ctx);
+                return;
+            }
+        }
+        
+        else if (event & NETWORK_DATA) {
+            /* incoming data from the peer */
+            data_length = stcp_network_recv(sd, buffer, max_length);
+            
+            if (data_length < (ssize_t)sizeof(STCPHeader)) {
+                // something wrong
+                fprintf(stderr, "control_loop(): Supposed to get NETWORK_DATA but received something too small.\n");
+                free(buffer);
+                free(ctx);
+                return;
+            }
+            
+            /* check for all possible closing cases */
+            if ((ctx->connection_state == CSTATE_ESTABLISED) && (packet->th_flags | TH_FIN)) {
+                // was open -> asked to close: 4-way handshake
+                // TODO: maybe change ACK to FINACK?
+                if (!SendPacket(sd, ctx, ACK, NULL, 0)) {
+                    perror("4-way handshake send FINACK 1");
+                    free(buffer);
+                    free(ctx);
+                    return;
+                }
+                ctx->connection_state = CSTATE_CLOSE_WAIT;
+                // notify upper layer
+                stcp_fin_received(sd);
+                if (!SendPacket(sd, ctx, FIN, NULL, 0)) {
+                    perror("4-way handshake send FIN 2");
+                    free(buffer);
+                    free(ctx);
+                    return;
+                }
+                ctx->connection_state = CSTATE_LAST_ACK;
+                // TODO: maybe change ACK to FINACK?
+                if (!WaitPacket(sd, ctx, ACK)) {
+                    perror("4-way handshake wait FINACK 2");
+                    free(buffer);
+                    free(ctx);
+                    return;
+                }
+                ctx->connection_state = CSTATE_CLOSED;
+                ctx->done = 1;
+                break;
+            }
+            
+            else {
+                // regular data
+                // TODO: do something with data
+                stcp_app_send(sd, ((char *)buffer + sizeof(STCPHeader)), ((size_t)data_length - sizeof(STCPHeader)))
+                //fprintf(stdout, "Do something with data packet.\n");
+                // send ACK
+                if (!SendPacket(sd, ctx, ACK, NULL, 0)) {
+                    perror("control_loop(): Sending ACK of received DATA");
+                    free(buffer);
+                    free(ctx);
+                    return;
+                }
+            }
+        }
+        else if (event & APP_CLOSE_REQUESTED) {
+            /* the socket asked to be closed */
+            if (ctx->connection_state != CSTATE_ESTABLISHED) {
+                fprintf(stderr, "control_loop(): App reqeuested close but already in process.\n");
+                free(buffer);
+                free(ctx);
+                assert(0);
+                return;
+            }
+            // nothing wrong
+            stcp_fin_received(sd);
+            if (!SendPacket(sd, ctx, FIN, NULL, 0)) {
+                perror("control_loop(): 4-way handshake send FIN 1");
+                free(buffer);
+                free(ctx);
+                return;
+            }
+            ctx->connection_state = CSTATE_FIN_WAIT1;
+            // TODO: maybe change ACK to FINACK?
+            if (!WaitPacket(sd, ctx, ACK, NULL, 0)) {
+                perror("control_loop(): 4-way handshake wait FINACK 1");
+                free(buffer);
+                free(ctx);
+                return;
+            }
+            ctx->connection_state = CSTATE_FIN_WAIT2;
+            if (!WaitPacket(sd, ctx, FIN, NULL, 0)) {
+                perror("control_loop(): 4-way handshake wait FIN 2");
+                free(buffer);
+                free(ctx);
+                return;
+            }
+            // TODO: maybe change ACK to FINACK?
+            if (!SendPacket(sd, ctx, ACK, NULL, 0)) {
+                perror("control_loop(): 4-way handshake send FINACK 2");
+                free(buffer);
+                free(ctx);
+                return;
+            }
+            ctx->connection_state = CSTATE_CLOSED;
+            ctx->done = 1;
+            break;
         }
 
-        /* etc. */
+        else if (event & TIMEOUT) {
+            /* timeout */
+            fprintf(stderr, "control_loop: Didn't expect TIMEOUT event...\n");
+            assert(0);
+        }
+
+        else {
+            // should not reach here?
+            fprintf(stderr, "control_loop(): Unknown event type.\n");
+            assert(0);
+        }
     }
+    /* clean up my mess! */
+    free(buffer);
+    free(ctx);
+    return;
 }
 
 
@@ -368,12 +514,16 @@ WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
     //unsigned int event;
     ssize_t numBytes;
 
-    //event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
-    stcp_wait_for_event(sd, NETWORK_DATA, NULL);
+    event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
+    //stcp_wait_for_event(sd, NETWORK_DATA, NULL);
+
+    if (!(event & NETWORK_DATA)) {
+        fprintf(stderr, "WaitPacket(): Expected NETWORK_DATA, got something else.\n");
+    }
 
     numBytes = stcp_network_recv(sd, (void *)packet, STCP_MSS);
 
-    if (numBytes < (ssize_t) sizeof(STCPHeader)) {
+    if (numBytes < (ssize_t)sizeof(STCPHeader)) {
         // something went wrong
         free(packet);
         return false;
@@ -447,8 +597,6 @@ WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
 /* PrintPacket
  *
  * Prints information of a packet.
- * TODO:
- * 
  */
 void PrintPacket(STCPHeader *packet, bool isSend)
 {
