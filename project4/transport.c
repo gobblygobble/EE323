@@ -126,18 +126,21 @@ void transport_init(mysocket_t sd, bool_t is_active)
         if (!SendPacket(sd, ctx, SYN, NULL, 0)) {
             perror("3-way handshake send SYN");
             free(ctx);
+            errno = ECONNREFUSED;
             return;
         }
         ctx->connection_state = CSTATE_SYN_SENT;
         if (!WaitPacket(sd, ctx, SYNACK)) {
             perror("3-way handshake wait SYNACK");
             free(ctx);
+            errno = ECONNREFUSED;
             return;
         }
         ctx->connection_state = CSTATE_ESTABLISHED;
         if (!SendPacket(sd, ctx, ACK, NULL, 0)) {
             perror("3-way handshake send ACK");
             free(ctx);
+            errno = ECONNREFUSED;
             return;
         }
         ctx->logfile = fopen("client_log.txt", "w");
@@ -147,17 +150,20 @@ void transport_init(mysocket_t sd, bool_t is_active)
         if (!WaitPacket(sd, ctx, SYN)) {
             perror("3-way handshake wait SYN");
             free(ctx);
+            errno = ECONNREFUSED;
             return;
         }
         if (!SendPacket(sd, ctx, SYNACK, NULL, 0)) {
             perror("3-way handshake send SYNACK");
             free(ctx);
+            errno = ECONNREFUSED;
             return;
         }
         ctx->connection_state = CSTATE_SYN_RCVD;
         if (!WaitPacket(sd, ctx, ACK)) {
             perror("3-way handshake wait ACK");
             free(ctx);
+            errno = ECONNREFUSED;
             return;
         }
         ctx->connection_state = CSTATE_ESTABLISHED;
@@ -254,7 +260,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             /* check for all possible closing cases */
             if ((ctx->connection_state == CSTATE_ESTABLISHED) && (packet->th_flags & TH_FIN)) {
                 // was open -> asked to close: 4-way handshake
-                // TODO: maybe change ACK to FINACK?
                 if (!SendPacket(sd, ctx, ACK, NULL, 0)) {
                     perror("4-way handshake send FINACK 1");
                     free(buffer);
@@ -271,7 +276,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     return;
                 }
                 ctx->connection_state = CSTATE_LAST_ACK;
-                // TODO: maybe change ACK to FINACK?
                 if (!WaitPacket(sd, ctx, ACK)) {
                     perror("4-way handshake wait FINACK 2");
                     free(buffer);
@@ -285,7 +289,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             
             else {
                 // regular data
-                // TODO: do something with data
                 stcp_app_send(sd, ((char *)buffer + sizeof(STCPHeader)), ((size_t)data_length - sizeof(STCPHeader)));
 
                 // set ctx fields for next ACK
@@ -322,7 +325,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 return;
             }
             ctx->connection_state = CSTATE_FIN_WAIT1;
-            // TODO: maybe change ACK to FINACK?
             if (!WaitPacket(sd, ctx, ACK)) {
                 perror("control_loop(): 4-way handshake wait FINACK 1");
                 free(buffer);
@@ -336,7 +338,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 free(ctx);
                 return;
             }
-            // TODO: maybe change ACK to FINACK?
             if (!SendPacket(sd, ctx, ACK, NULL, 0)) {
                 perror("control_loop(): 4-way handshake send FINACK 2");
                 free(buffer);
@@ -444,7 +445,6 @@ CreatePacket(tcp_seq seqnum, tcp_seq acknum, PacketType type, char* payload, siz
  * Returns true on success and false on error.
  * TODO:
  * Not sure if errno should be set.
- * Not certain on the sequence number updates of ctx.
  */
 bool
 SendPacket(mysocket_t sd, context_t* ctx, PacketType type, char* src, size_t src_len)
@@ -534,9 +534,6 @@ SendPacket(mysocket_t sd, context_t* ctx, PacketType type, char* src, size_t src
  * Returns true on success and false on any failure.
  * This function should not ever be called in control loop.
  * Hence, it only waits for "NETWORK_DATA".
- * TODO:
- * rcvd_win setting
- * rcvd_len setting
  */
 bool
 WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
@@ -650,7 +647,7 @@ WaitPacket(mysocket_t sd, context_t *ctx, PacketType type)
             return false;
             break;
     }
-    //free(packet);
+    free(packet);
     return true;
 }
 
