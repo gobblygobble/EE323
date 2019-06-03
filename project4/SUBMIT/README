@@ -34,6 +34,7 @@ Design:
     perror() function was used to print errors in stderr.
     In other cases of errors, fprintf(stderr, ...) was used. But in the cases I've seen, these errors are not posted.
     (Mainly because they shouldn't, and are printed for debugging purposes)
+    Along with these messages, in case of connection error during 3-way handshake, errno was set to ECONNREFUSED to notify the application layer.
 
     3.
     Other parts of the code are easy to read, given that the four functions introduced are well-understood and you follow the rules of switch-case statements.
